@@ -19,7 +19,7 @@
   const SEASONS = [
     { id: 'autumn', name: 'Autumn', quarter: 'Christmas', inflow: 1.2 },
     { id: 'winter', name: 'Winter', quarter: 'Lady Day', inflow: 0.85 },
-    { id: 'spring', name: 'Spring', quarter: 'Midsummer', inflow: 1.95 },
+    { id: 'spring', name: 'Spring', quarter: 'Midsummer', inflow: 2.4 },
     { id: 'summer', name: 'Summer', quarter: 'Michaelmas', inflow: 0.62 },
   ];
   /* what the carts bring each day, by season [autumn, winter, spring, summer] */
@@ -45,17 +45,18 @@
     breast: { name: 'Breastshot wheel', short: 'BREASTSHOT', head: 1.5, intake: 1.5 },
     over: { name: 'Overshot wheel', short: 'OVERSHOT', head: 2.2, intake: 2.0 },
   };
-  const PONDS = [15, 120, 300, 600];
+  /* sized to what the river can fill: a spring flood leaves about 1.2 a day over an undershot wheel (review_010 #7 measured the old 120/300/600 never above 33) */
+  const PONDS = [15, 45, 90, 150];
   const UPGRADES = [
-    { id: 'pond1', name: 'Dig a mill pond', cost: 250, need: null, unlock: 0, says: 'Holds 120 of water behind a dam (an autumn river brings about 1.2 a day). Fill it in the flood, spend it in the drought.' },
+    { id: 'pond1', name: 'Dig a mill pond', cost: 250, need: null, unlock: 0, says: 'Holds 45 of water behind a dam: a spring flood fills it, and it keeps the wheel at full flow for weeks of summer drought.' },
     { id: 'crown', name: 'Crown gears', cost: 350, need: null, unlock: 0, says: 'Adds a 1st and a 5th gear to every gearbox, for the deepest drought and the worst spate.' },
     { id: 'granary', name: 'Granary and lofts', cost: 300, need: null, unlock: 1, says: 'Every store holds 200 instead of 60, so a glut waits for the stones instead of rotting.' },
     { id: 'breast', name: 'Breastshot wheel', cost: 800, need: null, unlock: 1, says: 'Water strikes the wheel halfway up: half as much power again from the same water.' },
     { id: 'iron', name: 'Iron gearing', cost: 600, need: null, unlock: 2, says: 'Cast iron cogs: more of the wheel reaches the shaft, and racing wears a machine slower.' },
     { id: 'shaft', name: 'Lengthen the shaft', cost: 500, need: null, unlock: 2, says: 'Two more bays on the line shaft. Six machines can share one wheel.' },
-    { id: 'pond2', name: 'Raise the dam', cost: 700, need: 'pond1', unlock: 2, says: 'The pond holds 300. A whole spring flood can wait for August.' },
+    { id: 'pond2', name: 'Raise the dam', cost: 700, need: 'pond1', unlock: 2, says: 'The pond holds 90. Close the sluice a notch in a spate and bank the rest for August.' },
     { id: 'over', name: 'Overshot wheel', cost: 2400, need: 'breast', unlock: 4, says: 'A new leat over the top of a bigger wheel: more than twice the undershot power, and it drinks a deeper river.' },
-    { id: 'pond3', name: 'Second pond', cost: 1600, need: 'pond2', unlock: 5, says: 'The pond holds 600: water banked across a whole season.' },
+    { id: 'pond3', name: 'Second pond', cost: 1600, need: 'pond2', unlock: 5, says: 'The pond holds 150: a whole dry summer at full flow, if you fill it.' },
   ];
   const GOVERNOR_COST = 250;
   const FREEHOLD = 6500;
@@ -96,7 +97,7 @@
   }
   function money(n) { return '£' + Math.round(n).toLocaleString('en-GB'); }
   function say(G, text, kind) { G.seq++; G.log.push({ seq: G.seq, day: dayStamp(G), text, kind: kind || 'info' }); if (G.log.length > 60) G.log.splice(0, G.log.length - 60); }
-  function dayStamp(G) { return 'Y' + G.year + ' ' + SEASONS[G.season].name + ' ' + (Math.floor(G.day) + 1); }
+  function dayStamp(G) { return 'Y' + G.year + ' ' + SEASONS[G.season].name + ' ' + Math.min(SEASON_DAYS, Math.floor(G.day) + 1); }
   function rent(G) { return Math.round(RENT_BASE * Math.pow(RENT_RISE, G.year - 1)); }
   function storeCap(G) { return G.owned.granary ? 200 : 60; }
   function pondCap(G) { return PONDS[G.pond]; }
@@ -194,7 +195,7 @@
       if (m.repair > 0) {
         m.repair -= DT;
         if (m.repair <= 0) {
-          m.repair = 0; m.broken = false; m.wear = 0; m.on = false;
+          m.repair = 0; m.broken = false; m.wear = 0; m.on = false; m.mended = !m.gov;
           /* a governed machine is handed back to its governor, which puts it in gear when its store holds work; an ungoverned one waits for the player */
           if (m.gov) { m.govOut = true; say(G, MACHINES[m.type].name + ' mended. Its governor will put it back in gear.', 'good'); }
           else say(G, MACHINES[m.type].name + ' mended. Put it back in gear when you are ready.', 'good');
@@ -275,9 +276,14 @@
     for (const k of Object.keys(G)) delete G[k];
     Object.assign(G, c);
     G.evictions = keep;
-    G.checkpoint = JSON.parse(JSON.stringify(c));
+    /* the year is given back CLEAN: no strike, no arrears, every machine mended and resting (review_010 #2: a checkpoint taken after a missed
+     * Michaelmas carried the strike, and a lone broken millstones with no money for a mend evicted again forever) */
+    G.strikes = 0; G.arrears = 0;
+    for (const m of G.slots) if (m) { m.broken = false; m.repair = 0; m.wear = Math.min(m.wear, 0.5); }
+    G.checkpoint = JSON.parse(JSON.stringify(G));
+    G.checkpoint.checkpoint = null; G.checkpoint.log = [];
     G.ended = null;
-    say(G, 'Michaelmas, Year ' + G.year + ' again. The steward gives you the year back.', 'info');
+    say(G, 'Michaelmas, Year ' + G.year + ' again. The steward forgives the arrears and gives you the year back, every machine mended.', 'info');
     return { ok: true };
   }
 
@@ -290,9 +296,10 @@
     for (const m of G.slots) {
       if (!m || !m.gov || m.broken || m.repair > 0) continue;
       const M = MACHINES[m.type];
-      const starved = m.work !== undefined && m.work < 0.35 && G.stock[M.stock] < 1;
+      /* out when it runs SHORT, the same line the wear rule draws (work < 0.8), so a governed machine never wears running empty (review_010 #9) */
+      const starved = m.work !== undefined && m.work < 0.8 && G.stock[M.stock] < 2;
       if (m.on && starved) { m.on = false; m.govOut = true; continue; }
-      if (!m.on && m.govOut && G.stock[M.stock] >= 3) { m.on = true; m.govOut = false; m.work = 1; }
+      if (!m.on && m.govOut && G.stock[M.stock] >= 6) { m.on = true; m.govOut = false; m.work = 1; }
     }
     for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < G.slots.length; i++) {
@@ -320,7 +327,7 @@
   function shift(G, i, dir) {
     const m = G.slots[i];
     if (!m) return { ok: false, why: 'That bay is empty.' };
-    if (m.broken || m.repair > 0) return { ok: false, why: MACHINES[m.type].name + ' is broken. Repair it first.' };
+    if (m.broken || m.repair > 0) return { ok: false, why: 'Mend the ' + MACHINES[m.type].name.toLowerCase() + ' first.' };
     const gears = gearsAvail(G);
     const n = m.gear + dir;
     if (n < gears[0]) return { ok: false, why: m.gear === 2 && !G.owned.crown ? 'No lower gear. Crown gears add a 1st.' : 'Already in the lowest gear.' };
@@ -331,8 +338,8 @@
   function clutch(G, i) {
     const m = G.slots[i];
     if (!m) return { ok: false, why: 'That bay is empty.' };
-    if (m.broken || m.repair > 0) return { ok: false, why: MACHINES[m.type].name + ' is broken. Repair it first.' };
-    m.on = !m.on; m.govOut = false;
+    if (m.broken || m.repair > 0) return { ok: false, why: 'Mend the ' + MACHINES[m.type].name.toLowerCase() + ' first.' };
+    m.on = !m.on; m.mended = false; m.govOut = false;
     return { ok: true, on: m.on };
   }
   function repairCost(m) { return Math.round(MACHINES[m.type].cost * 0.25); }
