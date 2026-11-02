@@ -16,7 +16,7 @@ One water wheel turns one line shaft. Every machine on the shaft (millstones, a 
 - The carts bring work by season: grain in autumn, logs in winter, loom cloth in summer, bloom and rags all year. A machine short of work wears running empty.
 - The manor wants its rent every quarter day, and it rises each year. Buy the **freehold** and the mill is yours.
 
-If you miss two quarter days in a row, the steward ends the lease. You go back to Michaelmas (the start) of that year, with the mill as it stood then. Nothing from earlier years is lost.
+If you miss two quarter days in a row, the steward ends the lease. You go back to Michaelmas (the start) of that year, with the mill as it stood then, the arrears forgiven and every machine mended. Nothing from earlier years is lost.
 
 ### Controls
 
