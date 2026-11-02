@@ -1,0 +1,27 @@
+OVERSHOT
+Copyright (c) 2026 Core Systems Asset Factory
+
+CODE (index.html and everything in js/)
+Released under the MIT License:
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+ART, MUSIC AND TEXT (art/, audio/, store_assets/ and the game's words)
+Copyright (c) 2026 Core Systems Asset Factory. All rights reserved. You may play, stream and record the game freely.
+
+FONTS (fonts/)
+Alfa Slab One and Zilla Slab are licensed under the SIL Open Font License, Version 1.1. The full licence texts ship beside the fonts:
+fonts/OFL-AlfaSlabOne.txt and fonts/OFL-ZillaSlab.txt.
+
+AI DISCLOSURE
+This game was made with AI: the code, the drawing code, the text and the music were written with an AI model; the cover painting was made with an
+AI image model. The sounds and music are synthesised by the game's own code.
