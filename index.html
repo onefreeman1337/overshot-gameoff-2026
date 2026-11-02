@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OVERSHOT</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23c99a4b'/%3E%3Ccircle cx='8' cy='8' r='2' fill='%23141110'/%3E%3C/svg%3E">
+<meta name="description" content="A free browser incremental for GitHub Game Off 2026. Run a water mill on a river that shifts with the seasons: shift every machine's gears to hold it in its band, pay the rent, buy the freehold.">
+<style>
+  /* bundled OFL faces (licence texts in fonts/): Alfa Slab One for the titles, Zilla Slab for the working UI. */
+  @font-face { font-family: 'Overshot Head'; src: url('fonts/alfaslab-400.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+  @font-face { font-family: 'Overshot Sans'; src: url('fonts/zilla-500.woff2') format('woff2'); font-weight: 100 600; font-display: block; }
+  @font-face { font-family: 'Overshot Sans'; src: url('fonts/zilla-700.woff2') format('woff2'); font-weight: 601 900; font-display: block; }
+  html, body { margin: 0; height: 100%; background: #100d0b; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas { display: block; outline: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+</style>
+</head>
+<body>
+<canvas id="game" width="960" height="600" tabindex="-1"></canvas>
+<script src="js/sim.js"></script>
+<script src="js/render.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
