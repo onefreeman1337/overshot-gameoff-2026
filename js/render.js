@@ -84,12 +84,20 @@
     while (s.length > 1 && width(s, o) > maxW) s = s.slice(0, -1);
     return s;
   }
+  /* the cut is SAID: a shortened string ends in an ellipsis (review_010 #16: log lines stopped mid-sentence) */
+  function fitE(str, maxW, o) {
+    str = String(str);
+    if (width(str, o) <= maxW) return str;
+    const words = str.split(' ');
+    while (words.length > 1) { words.pop(); const s = words.join(' ').replace(/[,:;.]$/, '') + '\u2026'; if (width(s, o) <= maxW) return s; }
+    return fit(str, maxW, o);
+  }
   /* ---------- boxes and buttons. The tap floor belongs here, at the one door, never at a call site. ---------- */
   let hits = [];
   function box(x, y, w, h, fill, edge) {
     ctx.fillStyle = fill; ctx.fillRect(x, y, w, h);
     if (edge) { ctx.strokeStyle = edge; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1); }
-    if (REC.on) REC.panels.push({ x, y, w, h });
+    if (REC.on) REC.panels.push({ x, y, w, h, at: REC.text.length });
   }
   function button(id, label, x, y, w, h, o) {
     o = o || {};
@@ -446,7 +454,7 @@
     ctx.restore();
     const band = m.broken ? 'broken' : !m.on ? 'out' : SIM.band(m.type, rpm);
     const col = band === 'good' ? PAL.good : band === 'racing' ? PAL.bad : band === 'slow' ? PAL.slow : PAL.faint;
-    const lab = m.broken ? 'X' : m.repair > 0 ? '...' : !m.on ? 'OUT' : String(Math.round(rpm));
+    const lab = m.repair > 0 ? '...' : m.broken ? 'X' : !m.on ? 'OUT' : String(Math.round(rpm));
     const lw = width(lab, { s: S.tsS, w: 700 }) + 8, ls = size({ s: S.tsS });
     ctx.fillStyle = 'rgba(20,16,13,0.9)'; ctx.fillRect(Math.round(cx - lw / 2), Math.round(cy + 3), Math.round(lw), Math.round(ls + 4));
     text(lab, cx, cy + ls + 3, { s: S.tsS, w: 700, a: 'center', c: col });
@@ -458,7 +466,7 @@
   function context() { return ctx; }
   function shape() { return S; }
   function snapshotNative() { return nb ? nb.toDataURL('image/png') : null; }
-  const API = { init, setShape, setBackstore, setCssScale, SHAPES, PAL, REC, text, wrap, para, paraHeight, fit, width, size, box, button, zone, cover, resetHits, hitAt, allHits, drawScene, bayRect, sceneRect, ART, NW, NH, L, context, shape, snapshotNative, ang,
+  const API = { init, setShape, setBackstore, setCssScale, SHAPES, PAL, REC, text, wrap, para, paraHeight, fit, fitE, width, size, box, button, zone, cover, resetHits, hitAt, allHits, drawScene, bayRect, sceneRect, ART, NW, NH, L, context, shape, snapshotNative, ang,
     get S() { return S; }, get ctx() { return ctx; }, get bk() { return bk; }, get cssScale() { return cssScale; } };
   root.RENDER = API;
 })(typeof window !== 'undefined' ? window : globalThis);
