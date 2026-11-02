@@ -1,0 +1,6 @@
+# Text files check out with LF everywhere, so a clone is byte-for-byte the build that was published.
+* text=auto eol=lf
+*.png binary
+*.gif binary
+*.ogg binary
+*.woff2 binary
