@@ -98,10 +98,13 @@
       if (e.seq <= ui.lastLog) continue;
       ui.lastLog = e.seq;
       if (/ broke /.test(' ' + e.text + ' ') || /broke (racing|running)/.test(e.text)) A.play('break');
-      else if (/rent, .* is paid|paid\. .* owed/.test(e.text)) A.play('bell');
+      else if (/rent, .* is paid/.test(e.text)) A.play('bell');
+      else if (/paid\. .* owed/.test(e.text)) A.play('refuse');
       else if (/^Today: a spate/.test(e.text)) A.play('spate');
       if (e.kind === 'bad') toast(e.text, P.bad, 4.5);
       else if (e.kind === 'warn') toast(e.text, P.warn, 3.5);
+      /* a phone has no log lines on screen, so the news a desktop player reads in the foot arrives as a short toast (review_010 #6) */
+      else if (R.S.name !== 'wide' && !/^Today:|is over\.$/.test(e.text)) toast(e.text, e.kind === 'good' ? P.good : P.ink, 3);
     }
   }
   function drawToasts(now) {
@@ -123,11 +126,13 @@
   /* ---------- advice: one line, read off the state, that tells a new miller what the dials mean ---------- */
   function advice(sh) {
     if (!G) return null;
-    const racing = [], slow = [], empty = [], broken = [];
+    const racing = [], slow = [], empty = [], broken = [], mended = [];
     G.slots.forEach((m, i) => {
       if (!m) return;
       if (m.broken && m.repair <= 0) { broken.push(i); return; }
+      if (!m.on && m.mended && m.repair <= 0) { mended.push(i); return; }
       if (!m.on || m.repair > 0) return;
+      if (m.gov) { if (SIM.band(m.type, sh.rpm[i]) === 'racing') racing.push(i); return; }
       const b = SIM.band(m.type, sh.rpm[i]);
       if (b === 'racing') { racing.push(i); return; }
       if (m.work !== undefined && m.work < 0.8 && sh.rpm[i] > 0) { empty.push(i); return; }
@@ -135,11 +140,18 @@
     });
     const nm = (i) => (i + 1) + ' ' + SIM.MACHINES[G.slots[i].type].short;
     if (racing.length) return { c: P.bad, t: 'RACING: bay ' + nm(racing[0]) + ' is over its band and wearing. Shift it DOWN a gear, or close the sluice a notch.' };
-    if (broken.length) return { c: P.bad, t: 'Bay ' + nm(broken[0]) + ' is broken. MEND it from its row, then shift it in again.' };
+    if (broken.length) return { c: P.bad, t: 'Bay ' + nm(broken[0]) + ' is broken. MEND it from its row.' };
+    if (mended.length) return { c: P.good, t: 'Bay ' + nm(mended[0]) + ' is mended and out of gear. Pick a gear that keeps it in its band, then put it IN.' };
     if (G.arrears > 0) return { c: P.bad, t: 'You owe the manor ' + SIM.money(G.arrears) + '. Miss a second quarter day and the lease ends.' };
-    if (empty.length) { const m = G.slots[empty[0]], M = SIM.MACHINES[m.type]; return { c: P.warn, t: 'Bay ' + nm(empty[0]) + ' works faster than the carts bring ' + SIM.STOCKS[M.stock].name + ', and running short wears it. Shift it down, or take it OUT till the store fills.' }; }
-    if (slow.length) return { c: P.slow, t: 'SLOW: bay ' + nm(slow[0]) + ' is under its band. Shift it UP a gear, or take another machine out to free the shaft.' };
-    if (G.next && G.next.id === 'spate') return { c: P.warn, t: 'A spate tomorrow: the river will rise and the shaft will speed up. Be ready to shift down.' };
+    if (empty.length) { const m = G.slots[empty[0]], M = SIM.MACHINES[m.type]; return { c: P.warn, t: 'Bay ' + nm(empty[0]) + ' works faster than the carts bring ' + SIM.STOCKS[M.stock].name + ', and running short wears it. Take it OUT of gear till the store fills, or fit a governor.' }; }
+    if (slow.length) { const m = G.slots[slow[0]], top = m.gear >= SIM.gearsAvail(G).slice(-1)[0]; return { c: P.slow, t: top ? 'SLOW: bay ' + nm(slow[0]) + ' is in its top gear and still under its band. Take another machine out to free the shaft, or open the sluice.' : 'SLOW: bay ' + nm(slow[0]) + ' is under its band. Shift it UP a gear, or take another machine out to free the shaft.' }; }
+    if (G.next && G.next.id === 'spate') {
+      /* a spate only reaches the shaft when the wheel is short of water and the pond is empty (review_010 #5 measured the old warning wrong in 15 of 24 cases) */
+      const want = (G.sluice / 4) * SIM.WHEELS[G.wheel].intake;
+      if (G.level < 1 && SIM.inflow(G) < want * 0.95) return { c: P.warn, t: 'A spate tomorrow: the wheel will get more water and the shaft will speed up. Be ready to shift down.' };
+      return { c: P.water, t: 'A spate tomorrow: more water than your wheel can drink. The pond fills and the rest goes over the weir.' };
+    }
+    if (G.year === 1 && G.season === 0 && G.day < 8) return { c: P.ink, t: 'Your millstones turn inside the green arc on their dial: their band. When the river shifts, shift their gear (+ and \u2212) to stay in it.' };
     if (!G.owned.pond1 && G.coins >= 250) return { c: P.good, t: 'You can afford a mill pond (SHOP): it stores the spring flood for the summer drought.' };
     const can = SIM.ORDER.find((t) => SIM.canBuild(G, t).ok && !G.slots.some((m) => m && m.type === t));
     if (can) return { c: P.good, t: 'A ' + SIM.MACHINES[can].name.toLowerCase() + ' is for sale (SHOP). It ' + SIM.MACHINES[can].verb + '.' };
@@ -196,7 +208,7 @@
       y += R.para(line1.t, f.x + 12, y, bx - f.x - 24, { s: S.ts, w: 600, c: line1.c }, S.lh) + 2;
       if (adv) { T(R.fit(SIM.forecast(G), bx - f.x - 24, { s: S.tsS }), f.x + 12, y, { s: S.tsS, c: P.water }); y += S.lh; }
       const recent = G.log.slice(-6).reverse();
-      for (const e of recent) { if (y > f.y + f.h - 6) break; T(R.fit(e.day + '  ' + e.text, bx - f.x - 24, { s: S.tsS }), f.x + 12, y, { s: S.tsS, c: e.kind === 'bad' ? P.bad : e.kind === 'good' ? P.good : P.faint }); y += S.lh - 1; }
+      for (const e of recent) { if (y > f.y + f.h - 6) break; T(R.fitE(e.day + '  ' + e.text, bx - f.x - 24, { s: S.tsS }), f.x + 12, y, { s: S.tsS, c: e.kind === 'bad' ? P.bad : e.kind === 'good' ? P.good : P.faint }); y += S.lh - 1; }
       const x = speedButtons(bx, f.y + 10, 30, false);
       B('menu', 'MENU', bx, f.y + 52, 104, 30, { s: S.tsS });
       B('help', 'HOW TO PLAY', bx + 112, f.y + 52, 150, 30, { s: S.tsS });
@@ -204,16 +216,19 @@
     } else if (S.name === 'short') {
       const bx = f.x + f.w - 120;
       const t = adv ? adv : { c: P.dim, t: SIM.forecast(G) };
-      const lines = R.wrap(t.t, bx - f.x - 14, { s: S.tsS, w: 600 }).slice(0, 3);
+      const lines = R.wrap(t.t, bx - f.x - 14, { s: S.tsS, w: 600 }).slice(0, adv ? 2 : 3);
       lines.forEach((l, k) => T(l, f.x + 8, f.y + 17 + k * 17, { s: S.tsS, w: 600, c: t.c }));
+      if (adv) T(R.fit(SIM.forecast(G), bx - f.x - 14, { s: S.tsS }), f.x + 8, f.y + 17 + 2 * 17, { s: S.tsS, c: P.water });
       B('pause', ui.paused ? 'GO' : 'STOP', bx, f.y + 1, 62, 31, { on: ui.paused, s: S.tsS });
       B('speed', ui.speed + '×', bx + 66, f.y + 1, 52, 31, { s: S.tsS });
       B('menu', 'MENU', bx, f.y + 33, 62, 31, { s: S.tsS });
       B('help', '?', bx + 66, f.y + 33, 52, 31, { s: S.tsS });
     } else {
       const t = adv ? adv : { c: P.dim, t: SIM.forecast(G) };
-      const lines = R.wrap(t.t, f.w - 20, { s: S.tsS, w: 600 }).slice(0, 2);
-      lines.forEach((l, k) => T(l, f.x + 10, f.y + 18 + k * 18, { s: S.tsS, w: 600, c: t.c }));
+      const lines = R.wrap(t.t, f.w - 20, { s: S.tsS, w: 600 });
+      /* two lines: the advice, and the forecast when the advice fits in one (review_010 #6: the forecast was never drawn on a phone) */
+      if (adv && lines.length === 1) lines.push(null);
+      lines.slice(0, 2).forEach((l, k) => { if (l === null) T(R.fit(SIM.forecast(G), f.w - 20, { s: S.tsS }), f.x + 10, f.y + 18 + k * 18, { s: S.tsS, c: P.water }); else T(k === 1 && lines.length > 2 ? R.fit(l + ' ' + lines.slice(2).join(' '), f.w - 20, { s: S.tsS, w: 600 }) : l, f.x + 10, f.y + 18 + k * 18, { s: S.tsS, w: 600, c: t.c }); });
     }
   }
   function drawBottom() {
@@ -261,14 +276,16 @@
     const cap = SIM.pondCap(G);
     const R0 = SIM.inflow(G);
     T('RIVER ' + R0.toFixed(2) + '  ·  WHEEL TAKES ' + sh.f.toFixed(2), x, y + 13, { s: S.tsS, w: 700, c: P.water });
+    /* on the upright phone the pond figure sits on the river line, so two machines fit a page at 360x560 (review_010 #12) */
+    const tallC = S.name === 'tall';
+    if (tallC) T((G.pond ? 'POND ' : 'RACE ') + Math.round(G.level) + '/' + cap, x + w, y + 13, { s: S.tsS, w: 600, a: 'right', c: P.dim });
     y += S.lh + 2;
     const lv = Math.max(0, Math.min(1, G.level / cap));
     ctx.fillStyle = '#0e2a33'; ctx.fillRect(x, y, w, 10);
     ctx.fillStyle = '#3f8ea0'; ctx.fillRect(x, y, Math.round(w * lv), 10);
-    if (REC.on()) R.REC.panels.push({ x, y, w, h: 10 });
+    if (REC.on()) R.REC.panels.push({ x, y, w, h: 10, at: R.REC.text.length });
     y += 14;
-    T((G.pond ? 'POND ' : 'MILL RACE ') + Math.round(G.level) + ' OF ' + cap + (G.level >= cap - 0.01 && R0 > sh.f ? '  ·  SPILLING' : ''), x, y + 12, { s: S.tsS, c: P.dim, w: 600 });
-    y += S.lh + 2;
+    if (!tallC) { T((G.pond ? 'POND ' : 'MILL RACE ') + Math.round(G.level) + ' OF ' + cap + (G.level >= cap - 0.01 && R0 > sh.f ? '  ·  SPILLING' : ''), x, y + 12, { s: S.tsS, c: P.dim, w: 600 }); y += S.lh + 2; }
     const sw = S.name === 'tall' ? 56 : 40;
     B('sluice', '−', x, y, sw, S.tap, { data: -1, off: G.sluice <= 0, s: S.head + 2 });
     const mid = x + sw + 4, midW = w - 2 * sw - 8;
@@ -282,7 +299,7 @@
     y += S.lh + 6;
     ctx.fillStyle = P.edge; ctx.fillRect(x, y - 3, w, 1);
     /* the machines, paged */
-    const rowH = S.lh * 2 + S.tap + 12;
+    const rowH = S.lh * 2 + S.tap + (S.name === 'tall' ? 6 : 12);
     const pagerH = S.tap + 6;
     const avail = pn.y + pn.h - y - 4;
     const n = G.slots.length;
@@ -329,14 +346,19 @@
     bx += gw + 2;
     B('shift', '+', bx, by, bw, S.tap, { data: { i, d: 1 }, off: locked || m.gear >= SIM.gearsAvail(G).slice(-1)[0], s: S.head + 2 });
     bx += bw + 6;
-    const cw = big ? 108 : 60;
+    const cw = big ? 108 : 66;
     if (m.broken && m.repair <= 0) B('repair', 'MEND ' + SIM.money(SIM.repairCost(m)), bx, by, cw + (big ? 0 : 50), S.tap, { data: i, warn: true, s: S.tsS, off: G.coins < SIM.repairCost(m) });
     else if (m.repair > 0) { R.box(bx, by, cw, S.tap, '#241e19', P.edge); T('MENDING', bx + cw / 2, by + S.tap / 2 + 5, { s: S.tsS, a: 'center', c: P.warn, w: 700 }); }
     else B('clutch', m.on ? 'IN GEAR' : 'OUT', bx, by, cw, S.tap, { data: i, on: m.on, s: S.tsS });
     bx += cw + 4;
     const rest = x + w - bx;
     if (!(m.broken && m.repair <= 0) && rest >= 40) {
-      if (m.gov) { R.box(bx, by, rest, S.tap, '#2a3020', P.good); T('GOVERNOR', bx + rest / 2, by + S.tap / 2 + 5, { s: S.tsS - 1, a: 'center', c: P.good, w: 700 }); }
+      if (m.gov) {
+        /* the label that fits the box it sits in: GOVERNOR on a wide row, GOV ON on a narrow one (GOVERNOR overflowed a 50 px box on the desktop panel) */
+        R.box(bx, by, rest, S.tap, '#2a3020', P.good);
+        const gs = { s: S.tsS - 1, w: 700 }, lab = R.width('GOVERNOR', gs) <= rest - 8 ? 'GOVERNOR' : R.width('GOV ON', gs) <= rest - 8 ? 'GOV ON' : 'ON';
+        T(lab, bx + rest / 2, by + S.tap / 2 + 5, { s: S.tsS - 1, a: 'center', c: P.good, w: 700 });
+      }
       else B('governor', SIM.unlockIndex(G) < 3 ? 'GOV' : 'GOV ' + SIM.money(SIM.GOVERNOR_COST), bx, by, rest, S.tap, { data: i, off: SIM.unlockIndex(G) < 3 || G.coins < SIM.GOVERNOR_COST, s: S.tsS - 1 });
     }
   }
@@ -382,7 +404,10 @@
         B('freehold', 'BUY IT', x + w - 112, yy + 2, 112, S.tap, { gold: ok.ok, off: !ok.ok, s: S.tsS });
       } else {
         const locked = !ok.ok && /comes to market|can be done|First:/.test(ok.why || '');
-        if (locked) T(R.fit(ok.why.toUpperCase(), w, { s: S.tsS }), x, yy + 14, { s: S.tsS, c: P.faint, w: 700 });
+        /* lead with WHEN: the season is the whole point of the line (review_010 #10 measured every lock line cut before its season) */
+        const unl = it.kind === 'machine' ? SIM.MACHINES[it.id].unlock : SIM.UPGRADES.find((u) => u.id === it.id).unlock;
+        const lockTxt = /First:/.test(ok.why || '') ? ok.why : 'FROM ' + SIM.whenIdx(unl).toUpperCase();
+        if (locked) T(R.fit(lockTxt.toUpperCase(), w, { s: S.tsS, w: 700 }), x, yy + 14, { s: S.tsS, c: P.faint, w: 700 });
         else B(it.kind === 'machine' ? 'build' : 'buy', it.kind === 'machine' ? 'BUILD' : 'BUY', x + w - 112, yy + 2, 112, S.tap, { data: it.id, off: !ok.ok, s: S.tsS });
       }
       y += h;
@@ -409,7 +434,7 @@
     y += S.lh + 2;
     const ch = S.name === 'short' ? 34 : 46;
     ctx.fillStyle = '#0e1d22'; ctx.fillRect(x, y, w, ch);
-    if (R.REC.on) R.REC.panels.push({ x, y, w, h: ch });
+    if (R.REC.on) R.REC.panels.push({ x, y, w, h: ch, at: R.REC.text.length });
     const hist = G.flowHist, n = hist.length;
     if (n > 1) {
       ctx.strokeStyle = '#6cc0d0'; ctx.lineWidth = 1.5; ctx.beginPath();
@@ -507,7 +532,7 @@
   const HELP = [
     ['THE SHAFT', 'One water wheel turns one shaft, and every machine on it takes its turn from that shaft through its own gearbox.\n\nEach machine has a BAND, the green arc on its dial. Inside the band it works. Under it, it drags and makes little. Over it, it RACES: it wears, and if you leave it racing it breaks.\n\nEvery machine you put IN GEAR slows the whole shaft a little, the busier ones more. So a new machine can pull its neighbours under their bands.'],
     ['SHIFTING', 'Shift a machine UP (+) to make it turn faster, DOWN (−) to slow it. Put it OUT of gear and it rests, wears nothing and frees the shaft for the others.\n\nThe river SHIFTS under you. Autumn rains, a thin winter, a spring flood that races everything, a dry summer that drags it all. A spate is forecast a day ahead.\n\nThe SLUICE sets how much water reaches the wheel. Close it a notch in a flood and every machine slows together.'],
-    ['THE YEAR', 'The carts bring work by season: grain after the harvest in autumn, logs in winter, loom cloth after the shearing in summer, bloom and rags all year. A machine with nothing to work wears running empty: take it out of gear.\n\nThe manor wants its rent on every quarter day, rising each year. Miss two quarter days in a row and the steward ends the lease: you go back to Michaelmas of that year with the mill as it stood.\n\nA mill POND stores the spring flood for the summer. GOVERNORS shift for you. Buy the FREEHOLD and the mill is yours.'],
+    ['THE YEAR', 'The carts bring work by season: grain after the harvest in autumn, logs in winter, loom cloth after the shearing in summer, bloom and rags all year. A machine with nothing to work wears running empty: take it out of gear.\n\nThe manor wants its rent on every quarter day, rising each year. Miss two quarter days in a row and the steward ends the lease: you go back to Michaelmas of that year with the mill as it stood, the arrears forgiven and every machine mended.\n\nA mill POND stores the spring flood for the summer. GOVERNORS shift for you. Buy the FREEHOLD and the mill is yours.'],
   ];
   function drawHelp() {
     const S = R.S, pg = HELP[ui.helpPage];
@@ -534,7 +559,7 @@
   function summaryLines() {
     const t = G.totals;
     return [
-      'Year ' + G.year + ', ' + SIM.SEASONS[G.season].name.toLowerCase() + '.  ' + G.quarters + ' quarter days.',
+      'Year ' + G.year + ', ' + SIM.SEASONS[G.season].name.toLowerCase() + '.  ' + G.quarters + ' quarter day' + (G.quarters === 1 ? '' : 's') + '.',
       Math.round(t.flour) + ' sacks of flour  ·  ' + Math.round(t.planks) + ' planks  ·  ' + Math.round(t.cloth) + ' bolts',
       Math.round(t.iron) + ' bars of iron  ·  ' + Math.round(t.paper) + ' reams of paper',
       'Earned ' + SIM.money(t.coins) + '  ·  rent paid ' + SIM.money(G.rentPaid),
@@ -547,6 +572,7 @@
     /* the whole mill screen as it stood, dimmed under the sheet: never a black panel beside the picture */
     R.drawScene(G, sh, now, { running: true, dials: false });
     drawTop(sh); drawPanel(sh); drawFoot(sh); drawBottom();
+    A.setShaft(0, 0, false);
     if (ui.seenEnd !== G.ended) { ui.seenEnd = G.ended; A.play(G.ended === 'freehold' ? 'freehold' : 'evicted'); save(); }
     const won = G.ended === 'freehold';
     const b = sheet(won ? 'THE FREEHOLD' : 'THE LEASE IS ENDED', won ? 'The mill belongs to the miller.' : 'Two quarter days unpaid. The steward has the keys.', 5 * (S.lh + 4) + 2 * (S.tap + 14) + 40, !won);
@@ -561,7 +587,9 @@
   function drawTitle(now) {
     const S = R.S;
     if (!demo) demo = makeDemo();
-    for (let k = 0; k < 2; k++) SIM.step(demo);
+    /* the title's mill runs on the clock (2x), not one step per frame: at 60 Hz it strobed through a season every 1.5 s (review_010 #22) */
+    const dms = ui.demoAt ? Math.min(1000, now - ui.demoAt) : 0; ui.demoAt = now; ui.demoAcc = (ui.demoAcc || 0) + dms * 2;
+    while (ui.demoAcc >= SIM.TICK * 1000) { SIM.step(demo); ui.demoAcc -= SIM.TICK * 1000; }
     demo.slots.forEach((m) => { if (m && m.broken) { m.broken = false; m.wear = 0; m.on = true; } });
     demo.coins = 5000; demo.arrears = 0; demo.strikes = 0;
     if (demo.ended || demo.year > 3) demo = makeDemo();
@@ -603,7 +631,7 @@
       if (ui.hasSave && ui.armNew < performance.now()) { ui.armNew = performance.now() + 3000; A.play('tick'); return; }
       newGame(); ui.screen = 'play'; ui.hasSave = true; A.music(true); A.play('build'); return;
     }
-    if (id === 'continue') { if (loadGame()) { ui.screen = 'play'; resetPlay(); ui.awayNote = 'The mill stood still while you were away. Nothing turned, nothing wore, nothing was lost.'; A.music(true); A.play('tick'); } else { ui.hasSave = false; } return; }
+    if (id === 'continue') { if (loadGame()) { ui.screen = G.ended ? 'ending' : 'play'; ui.seenEnd = G.ended; resetPlay(); ui.awayNote = 'The mill stood still while you were away. Nothing turned, nothing wore, nothing was lost.'; A.music(true); A.play('tick'); } else { ui.hasSave = false; } return; }
     if (id === 'help') { ui.prev = ui.screen; ui.screen = 'help'; ui.helpPage = 0; A.play('tick'); return; }
     if (id === 'helppage') { ui.helpPage = Math.max(0, Math.min(HELP.length - 1, ui.helpPage + data)); A.play('tick'); return; }
     if (id === 'helpclose') { ui.screen = ui.prev && ui.prev !== 'help' ? ui.prev : (G ? 'play' : 'title'); A.play('tick'); return; }
@@ -614,7 +642,7 @@
     if (id === 'menu') { ui.menu = true; A.play('tick'); return; }
     if (id === 'menuclose') { ui.menu = false; A.play('tick'); return; }
     if (id === 'newmill') { G = null; try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } ui.hasSave = false; newGame(); ui.screen = 'play'; ui.hasSave = true; A.play('build'); return; }
-    if (id === 'checkpoint') { const r = SIM.restoreCheckpoint(G); if (r.ok) { ui.screen = 'play'; resetPlay(); ui.lastLog = G.seq - 1; save(); A.play('bell'); } else refuse(r); return; }
+    if (id === 'checkpoint') { const r = SIM.restoreCheckpoint(G); if (r.ok) { ui.screen = 'play'; ui.seenEnd = null; resetPlay(); ui.lastLog = G.seq - 1; save(); A.play('bell'); } else refuse(r); return; }
     if (!G) return;
     if (id === 'pause') { ui.paused = !ui.paused; A.play('tick'); return; }
     if (id === 'speed') { ui.speed = ui.speed === 1 ? 2 : ui.speed === 2 ? 4 : 1; ui.paused = false; A.play('tick'); return; }
@@ -674,6 +702,7 @@
     if (key === 'm') { act('mute'); return; }
     if (ui.screen === 'help') { if (key === 'arrowright') act('helppage', 1); else if (key === 'arrowleft') act('helppage', -1); else if (key === 'escape' || key === 'enter') act('helpclose'); return; }
     if (ui.screen === 'credits') { if (key === 'escape' || key === 'enter') act('creditsclose'); return; }
+    if (ui.screen === 'ending' && G) { if (key === 'enter' || key === ' ') { ev.preventDefault(); act(G.ended === 'freehold' ? 'newmill' : 'checkpoint'); } else if (key === 'escape') act('totitle'); return; }
     if (ui.screen === 'title') { if (key === 'enter' || key === ' ') { ev.preventDefault(); act(ui.hasSave ? 'continue' : 'new'); } return; }
     if (ui.screen !== 'play' || !G) return;
     if (ui.menu) { if (key === 'escape' || key === 'enter') act('menuclose'); return; }
@@ -714,9 +743,11 @@
       if (G && ui.prev === 'play') { const sh = liveShaft(G); R.drawScene(G, sh, now, { running: false }); drawTop(sh); drawPanel(sh); drawFoot(sh); drawBottom(); }
       else drawTitle(now);
       if (ui.screen === 'help') drawHelp(); else drawCredits();
+      A.setShaft(0, 0, false);
     }
   }
   function simulate(dt) {
+    if (ui.screen === 'play' && G && G.ended) { ui.screen = 'ending'; return; }
     if (ui.screen !== 'play' || !G || ui.paused || ui.menu || G.ended) return;
     acc += dt * ui.speed;
     let n = 0;
